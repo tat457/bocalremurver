@@ -1,0 +1,1173 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VocalRemover Pro & Web Audio Studio</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0f172a;
+            color: #f8fafc;
+        }
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #1e293b;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #475569;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #64748b;
+        }
+        /* Slider Styling */
+        input[type=range] {
+            -webkit-appearance: none;
+            background: #334155;
+            border-radius: 6px;
+            height: 6px;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 18px;
+            width: 18px;
+            border-radius: 50%;
+            background: #3b82f6;
+            cursor: pointer;
+            box-shadow: 0 0 10px rgba(59, 130, 246, 0.5);
+            transition: transform 0.1s ease;
+        }
+        input[type=range]::-webkit-slider-thumb:hover {
+            transform: scale(1.2);
+            background: #60a5fa;
+        }
+        .glow-box {
+            box-shadow: 0 0 20px rgba(59, 130, 246, 0.15);
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between">
+
+    <!-- Top Navigation Header -->
+    <header class="border-b border-slate-800 bg-slate-900/80 backdrop-blur sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-4">
+            <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center shadow-lg shadow-blue-500/30">
+                    <i class="fa-solid font-bold text-white text-xl fa-sliders"></i>
+                </div>
+                <div>
+                    <h1 class="font-bold text-lg leading-tight tracking-wide bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent">
+                        VocalRemover <span class="text-blue-500 font-extrabold text-xs px-2 py-0.5 rounded bg-blue-500/10 border border-blue-500/20">PRO</span>
+                    </h1>
+                    <p class="text-xs text-slate-400">Web Audio API Studio & Isolation Suite</p>
+                </div>
+            </div>
+
+            <!-- Action Buttons Header -->
+            <div class="flex items-center gap-3">
+                <button id="demoBtn" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium px-3 py-2 rounded-lg border border-slate-700 transition flex items-center gap-2">
+                    <i class="fa-solid fa-wand-magic-sparkles text-amber-400"></i> デモ曲を生成
+                </button>
+                <label class="cursor-pointer text-xs bg-blue-600 hover:bg-blue-500 text-white font-semibold px-4 py-2 rounded-lg shadow-lg shadow-blue-600/20 transition flex items-center gap-2">
+                    <i class="fa-solid fa-file-arrow-up"></i> 音声を読み込む
+                    <input type="file" id="audioFileInput" accept="audio/*,.m4a,.aac,.mp4,.mp3,.wav,.ogg,.flac" class="hidden">
+                </label>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Workspace -->
+    <main class="max-w-7xl mx-auto w-full px-4 py-6 flex-grow grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+        <!-- Left Column: Waveform & Processing Controls (8 Cols) -->
+        <div class="lg:col-span-8 flex flex-col gap-6">
+
+            <!-- File Info & Visualizer Display -->
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 glow-box relative overflow-hidden flex flex-col gap-4">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <h2 id="trackTitle" class="text-base font-semibold text-slate-200 truncate max-w-md">音声ファイルをロードしてください</h2>
+                        <p id="trackMeta" class="text-xs text-slate-500">Duration: 00:00 | Sample Rate: -- kHz</p>
+                    </div>
+                    <span id="statusBadge" class="text-xs font-medium px-2.5 py-1 rounded-full bg-slate-800 text-slate-400 border border-slate-700">
+                        待機中
+                    </span>
+                </div>
+
+                <!-- Canvas Visualizers -->
+                <div class="relative bg-slate-950 rounded-xl overflow-hidden border border-slate-800/80 group">
+                    <!-- Main Waveform Visualizer -->
+                    <canvas id="waveformCanvas" class="w-full h-36 cursor-pointer block"></canvas>
+                    <!-- Time Cursor Overlay -->
+                    <div id="playhead" class="absolute top-0 bottom-0 w-0.5 bg-blue-400 pointer-events-none transition-all duration-75" style="left: 0%"></div>
+                    
+                    <!-- Realtime Spectrum Canvas (Bottom Overlay) -->
+                    <canvas id="spectrumCanvas" class="w-full h-16 absolute bottom-0 left-0 pointer-events-none opacity-40 mix-blend-screen"></canvas>
+                </div>
+
+                <!-- Time & Transport Bar -->
+                <div class="flex items-center justify-between text-xs text-slate-400 px-1">
+                    <span id="currentTimeText">00:00</span>
+                    <!-- Transport Controls -->
+                    <div class="flex items-center gap-4">
+                        <button id="stopBtn" class="w-9 h-9 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center transition">
+                            <i class="fa-solid fa-square text-xs"></i>
+                        </button>
+                        <button id="playBtn" class="w-12 h-12 rounded-full bg-blue-600 hover:bg-blue-500 text-white flex items-center justify-center text-lg shadow-lg shadow-blue-600/30 transition transform active:scale-95">
+                            <i class="fa-solid fa-play ml-0.5"></i>
+                        </button>
+                        <button id="loopBtn" class="w-9 h-9 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-400 flex items-center justify-center transition">
+                            <i class="fa-solid fa-repeat text-xs"></i>
+                        </button>
+                    </div>
+                    <span id="totalTimeText">00:00</span>
+                </div>
+            </div>
+
+            <!-- Core Feature: Vocal Removal / Isolation Mode Panel -->
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 glow-box">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-sm font-bold text-slate-200 uppercase tracking-wider flex items-center gap-2">
+                        <i class="fa-solid fa-microphone-slash text-blue-400"></i> ボーカル処理モード (Center Cancel/Extract)
+                    </h3>
+                    <span class="text-xs text-slate-500">位相キャンセル・チャンネル分離</span>
+                </div>
+
+                <!-- Mode Selector Grid -->
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+                    <button data-mode="original" class="mode-btn active p-3 rounded-xl border border-blue-500/50 bg-blue-500/10 text-blue-400 flex flex-col items-center gap-2 text-xs font-semibold transition">
+                        <i class="fa-solid fa-music text-base"></i>
+                        <span>オリジナル (Stereo)</span>
+                    </button>
+                    <button data-mode="vocal-remove" class="mode-btn p-3 rounded-xl border border-slate-800 bg-slate-800/50 text-slate-400 hover:border-slate-700 flex flex-col items-center gap-2 text-xs font-semibold transition">
+                        <i class="fa-solid fa-user-slash text-base text-rose-400"></i>
+                        <span>ボーカル除去 (Karaoke)</span>
+                    </button>
+                    <button data-mode="vocal-isolate" class="mode-btn p-3 rounded-xl border border-slate-800 bg-slate-800/50 text-slate-400 hover:border-slate-700 flex flex-col items-center gap-2 text-xs font-semibold transition">
+                        <i class="fa-solid fa-microphone text-base text-emerald-400"></i>
+                        <span>ボーカルのみ抽出</span>
+                    </button>
+                    <button data-mode="bass-boost" class="mode-btn p-3 rounded-xl border border-slate-800 bg-slate-800/50 text-slate-400 hover:border-slate-700 flex flex-col items-center gap-2 text-xs font-semibold transition">
+                        <i class="fa-solid fa-drum text-base text-amber-400"></i>
+                        <span>インスト + 重低音</span>
+                    </button>
+                </div>
+
+                <!-- Fine Tuning Sliders for Vocal Removal -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-950/60 p-4 rounded-xl border border-slate-800">
+                    <div>
+                        <div class="flex justify-between text-xs mb-1">
+                            <span class="text-slate-400 font-medium">ボーカル周波数カット帯域</span>
+                            <span id="vocalFreqVal" class="text-blue-400 font-mono">1.2 kHz</span>
+                        </div>
+                        <input type="range" id="vocalFreqSlider" min="200" max="5000" step="50" value="1200" class="w-full">
+                        <p class="text-[10px] text-slate-500 mt-1">人の声の帯域（1kHz〜3kHz付近）のフィルター感度を微調整</p>
+                    </div>
+                    <div>
+                        <div class="flex justify-between text-xs mb-1">
+                            <span class="text-slate-400 font-medium">センター除去の深さ (Depth)</span>
+                            <span id="vocalDepthVal" class="text-blue-400 font-mono">100%</span>
+                        </div>
+                        <input type="range" id="vocalDepthSlider" min="0" max="100" value="100" class="w-full">
+                        <p class="text-[10px] text-slate-500 mt-1">逆位相キャンセルの強度（高品位ステレオ感の保持）</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Export & Download Card -->
+            <div class="bg-gradient-to-r from-slate-900 to-indigo-950 border border-slate-800 rounded-2xl p-5 flex flex-wrap items-center justify-between gap-4">
+                <div>
+                    <h3 class="text-sm font-bold text-slate-200 flex items-center gap-2">
+                        <i class="fa-solid fa-download text-emerald-400"></i> 編集音声を保存 (Export Audio)
+                    </h3>
+                    <p class="text-xs text-slate-400 mt-0.5">現在のエフェクト・ボーカル処理を適用した高音質WAVファイルを書き出します</p>
+                </div>
+                <button id="exportBtn" class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-5 py-2.5 rounded-xl shadow-lg shadow-emerald-600/20 transition flex items-center gap-2">
+                    <i class="fa-solid fa-file-export"></i> WAVとしてエクスポート
+                </button>
+            </div>
+        </div>
+
+        <!-- Right Column: Equalizer & FX Rack (4 Cols) -->
+        <div class="lg:col-span-4 flex flex-col gap-6">
+
+            <!-- Equalizer (3-Band EQ) -->
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 glow-box">
+                <h3 class="text-sm font-bold text-slate-200 uppercase tracking-wider mb-4 flex items-center gap-2">
+                    <i class="fa-solid fa-wave-square text-indigo-400"></i> 3-Band イコライザー
+                </h3>
+                <div class="grid grid-cols-3 gap-3 text-center">
+                    <!-- Low -->
+                    <div class="flex flex-col items-center gap-2 bg-slate-950/50 p-3 rounded-xl border border-slate-800">
+                        <span class="text-xs text-slate-400 font-semibold">BASS</span>
+                        <div class="h-32 flex items-center py-1">
+                            <input type="range" id="eqLow" min="-20" max="20" value="0" step="1" class="h-28 -rotate-90 origin-center w-28">
+                        </div>
+                        <span id="eqLowVal" class="text-xs font-mono text-indigo-400">0 dB</span>
+                    </div>
+                    <!-- Mid -->
+                    <div class="flex flex-col items-center gap-2 bg-slate-950/50 p-3 rounded-xl border border-slate-800">
+                        <span class="text-xs text-slate-400 font-semibold">MID</span>
+                        <div class="h-32 flex items-center py-1">
+                            <input type="range" id="eqMid" min="-20" max="20" value="0" step="1" class="h-28 -rotate-90 origin-center w-28">
+                        </div>
+                        <span id="eqMidVal" class="text-xs font-mono text-indigo-400">0 dB</span>
+                    </div>
+                    <!-- High -->
+                    <div class="flex flex-col items-center gap-2 bg-slate-950/50 p-3 rounded-xl border border-slate-800">
+                        <span class="text-xs text-slate-400 font-semibold">TREBLE</span>
+                        <div class="h-32 flex items-center py-1">
+                            <input type="range" id="eqHigh" min="-20" max="20" value="0" step="1" class="h-28 -rotate-90 origin-center w-28">
+                        </div>
+                        <span id="eqHighVal" class="text-xs font-mono text-indigo-400">0 dB</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Pitch & Tempo / Volume Panel -->
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 glow-box flex flex-col gap-4">
+                <h3 class="text-sm font-bold text-slate-200 uppercase tracking-wider flex items-center gap-2">
+                    <i class="fa-solid fa-gauge-high text-amber-400"></i> 再生コントロール & 音量
+                </h3>
+
+                <!-- Speed / Pitch -->
+                <div>
+                    <div class="flex justify-between text-xs mb-1">
+                        <span class="text-slate-400 font-medium">再生速度 (Speed / Pitch)</span>
+                        <span id="speedVal" class="text-amber-400 font-mono">1.00x</span>
+                    </div>
+                    <input type="range" id="speedSlider" min="0.5" max="2.0" step="0.05" value="1.0" class="w-full">
+                </div>
+
+                <!-- Master Volume -->
+                <div>
+                    <div class="flex justify-between text-xs mb-1">
+                        <span class="text-slate-400 font-medium">マスター音量 (Volume)</span>
+                        <span id="volumeVal" class="text-blue-400 font-mono">100%</span>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <i class="fa-solid fa-volume-low text-slate-500 text-xs"></i>
+                        <input type="range" id="volumeSlider" min="0" max="150" value="100" class="w-full">
+                        <i class="fa-solid fa-volume-high text-slate-400 text-xs"></i>
+                    </div>
+                </div>
+
+                <!-- Stereo Pan -->
+                <div>
+                    <div class="flex justify-between text-xs mb-1">
+                        <span class="text-slate-400 font-medium">ステレオ・パン (L / R)</span>
+                        <span id="panVal" class="text-slate-300 font-mono">C</span>
+                    </div>
+                    <input type="range" id="panSlider" min="-1" max="1" step="0.05" value="0" class="w-full">
+                </div>
+            </div>
+
+            <!-- Special Effects Panel -->
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 glow-box flex flex-col gap-4">
+                <h3 class="text-sm font-bold text-slate-200 uppercase tracking-wider flex items-center gap-2">
+                    <i class="fa-solid fa-compact-disc text-purple-400"></i> 空間エフェクト (FX)
+                </h3>
+
+                <!-- Reverb / Echo Gain -->
+                <div>
+                    <div class="flex justify-between text-xs mb-1">
+                        <span class="text-slate-400 font-medium">空間リバーブ (Reverb)</span>
+                        <span id="reverbVal" class="text-purple-400 font-mono">0%</span>
+                    </div>
+                    <input type="range" id="reverbSlider" min="0" max="100" value="0" class="w-full">
+                </div>
+
+                <!-- Echo Delay -->
+                <div>
+                    <div class="flex justify-between text-xs mb-1">
+                        <span class="text-slate-400 font-medium">ディレイ / エコー (Echo)</span>
+                        <span id="echoVal" class="text-purple-400 font-mono">0%</span>
+                    </div>
+                    <input type="range" id="echoSlider" min="0" max="80" value="0" class="w-full">
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="border-t border-slate-800 bg-slate-950 py-4 text-center text-xs text-slate-500">
+        VocalRemover Pro &copy; 2026 - Powered by Web Audio API & Canvas Audio Visualizer
+    </footer>
+
+    <!-- Processing Overlay Modal -->
+    <div id="modalOverlay" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm hidden flex items-center justify-center z-50">
+        <div class="bg-slate-900 border border-slate-800 p-6 rounded-2xl max-w-sm w-full text-center shadow-2xl flex flex-col items-center gap-4">
+            <div class="w-12 h-12 rounded-full border-4 border-blue-500 border-t-transparent animate-spin"></div>
+            <div>
+                <h4 id="modalTitle" class="font-bold text-slate-200 text-sm">処理中...</h4>
+                <p id="modalMsg" class="text-xs text-slate-400 mt-1">音声データを解析・レンダリングしています</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Application Script -->
+    <script>
+        // --- Web Audio & Application State ---
+        let audioCtx = null;
+        let audioBuffer = null;
+        let sourceNode = null;
+        
+        // Processing Nodes
+        let splitterNode = null;
+        let mergerNode = null;
+        let vocalFilterNode = null;
+        let vocalGainL = null;
+        let vocalGainR = null;
+        let eqLowNode = null;
+        let eqMidNode = null;
+        let eqHighNode = null;
+        let pannerNode = null;
+        let masterGainNode = null;
+        let delayNode = null;
+        let delayGainNode = null;
+        let convolverNode = null;
+        let convolverGainNode = null;
+        let analyserNode = null;
+
+        // Playback Control State
+        let isPlaying = false;
+        let isLooping = false;
+        let startTime = 0;
+        let pauseOffset = 0;
+        let currentMode = 'original'; // 'original', 'vocal-remove', 'vocal-isolate', 'bass-boost'
+
+        // DOM Elements
+        const audioFileInput = document.getElementById('audioFileInput');
+        const demoBtn = document.getElementById('demoBtn');
+        const playBtn = document.getElementById('playBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const loopBtn = document.getElementById('loopBtn');
+        const exportBtn = document.getElementById('exportBtn');
+        
+        const trackTitle = document.getElementById('trackTitle');
+        const trackMeta = document.getElementById('trackMeta');
+        const statusBadge = document.getElementById('statusBadge');
+        const currentTimeText = document.getElementById('currentTimeText');
+        const totalTimeText = document.getElementById('totalTimeText');
+        const playhead = document.getElementById('playhead');
+
+        // Sliders & Values
+        const vocalFreqSlider = document.getElementById('vocalFreqSlider');
+        const vocalDepthSlider = document.getElementById('vocalDepthSlider');
+        const vocalFreqVal = document.getElementById('vocalFreqVal');
+        const vocalDepthVal = document.getElementById('vocalDepthVal');
+
+        const eqLow = document.getElementById('eqLow');
+        const eqMid = document.getElementById('eqMid');
+        const eqHigh = document.getElementById('eqHigh');
+        const speedSlider = document.getElementById('speedSlider');
+        const volumeSlider = document.getElementById('volumeSlider');
+        const panSlider = document.getElementById('panSlider');
+        const reverbSlider = document.getElementById('reverbSlider');
+        const echoSlider = document.getElementById('echoSlider');
+
+        // Canvases
+        const waveCanvas = document.getElementById('waveformCanvas');
+        const waveCtx = waveCanvas.getContext('2d');
+        const specCanvas = document.getElementById('spectrumCanvas');
+        const specCtx = specCanvas.getContext('2d');
+
+        // Modal
+        const modalOverlay = document.getElementById('modalOverlay');
+        const modalTitle = document.getElementById('modalTitle');
+        const modalMsg = document.getElementById('modalMsg');
+
+        // --- Initialize Audio Context & Nodes ---
+        function initAudioContext() {
+            if (audioCtx) return;
+            const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+            audioCtx = new AudioContextClass();
+
+            // Create Node Graph
+            splitterNode = audioCtx.createChannelSplitter(2);
+            mergerNode = audioCtx.createChannelMerger(2);
+
+            // Vocal Filter (Bandpass / Bandstop)
+            vocalFilterNode = audioCtx.createBiquadFilter();
+            vocalFilterNode.type = 'notch';
+            vocalFilterNode.frequency.value = parseFloat(vocalFreqSlider.value);
+            vocalFilterNode.Q.value = 2.0;
+
+            // Inversion / Depth Gain Nodes
+            vocalGainL = audioCtx.createGain();
+            vocalGainR = audioCtx.createGain();
+
+            // EQ
+            eqLowNode = audioCtx.createBiquadFilter();
+            eqLowNode.type = 'lowshelf';
+            eqLowNode.frequency.value = 250;
+
+            eqMidNode = audioCtx.createBiquadFilter();
+            eqMidNode.type = 'peaking';
+            eqMidNode.frequency.value = 1500;
+            eqMidNode.Q.value = 1.0;
+
+            eqHighNode = audioCtx.createBiquadFilter();
+            eqHighNode.type = 'highshelf';
+            eqHighNode.frequency.value = 4000;
+
+            // Panner
+            pannerNode = audioCtx.createStereoPanner ? audioCtx.createStereoPanner() : null;
+
+            // Delay / Echo
+            delayNode = audioCtx.createDelay();
+            delayNode.delayTime.value = 0.25;
+            delayGainNode = audioCtx.createGain();
+            delayGainNode.gain.value = 0;
+
+            // Simple Synthetic Reverb Impulse Buffer
+            convolverNode = audioCtx.createConvolver();
+            convolverGainNode = audioCtx.createGain();
+            convolverGainNode.gain.value = 0;
+            createReverbImpulse();
+
+            // Master Volume & Analyser
+            masterGainNode = audioCtx.createGain();
+            analyserNode = audioCtx.createAnalyser();
+            analyserNode.fftSize = 512;
+        }
+
+        // Generate synthetic Impulse Response for Reverb
+        function createReverbImpulse() {
+            if (!audioCtx) return;
+            const rate = audioCtx.sampleRate;
+            const length = rate * 2.0;
+            const impulse = audioCtx.createBuffer(2, length, rate);
+            for (let i = 0; i < 2; i++) {
+                const channelData = impulse.getChannelData(i);
+                for (let j = 0; j < length; j++) {
+                    channelData[j] = (Math.random() * 2 - 1) * Math.pow(1 - j / length, 2.5);
+                }
+            }
+            convolverNode.buffer = impulse;
+        }
+
+        // --- Build Graph depending on Processing Mode ---
+        function setupNodeConnections() {
+            if (!audioCtx || !sourceNode) return;
+
+            // Disconnect everything
+            try {
+                sourceNode.disconnect();
+                splitterNode.disconnect();
+                mergerNode.disconnect();
+                vocalFilterNode.disconnect();
+                vocalGainL.disconnect();
+                vocalGainR.disconnect();
+                eqLowNode.disconnect();
+                eqMidNode.disconnect();
+                eqHighNode.disconnect();
+                if (pannerNode) pannerNode.disconnect();
+                delayNode.disconnect();
+                delayGainNode.disconnect();
+                convolverNode.disconnect();
+                convolverGainNode.disconnect();
+                masterGainNode.disconnect();
+            } catch (e) {}
+
+            const depth = parseFloat(vocalDepthSlider.value) / 100;
+            const freq = parseFloat(vocalFreqSlider.value);
+
+            if (currentMode === 'original') {
+                // Direct Stereo
+                sourceNode.connect(eqLowNode);
+            } else if (currentMode === 'vocal-remove') {
+                // Center Channel Phase Cancellation (Karaoke Mode)
+                // Vocal is usually panned dead-center. Inverting R and summing with L cancels center audio.
+                vocalFilterNode.type = 'notch';
+                vocalFilterNode.frequency.value = freq;
+
+                sourceNode.connect(vocalFilterNode);
+                vocalFilterNode.connect(splitterNode);
+
+                // Split L/R
+                vocalGainL.gain.value = 1.0;
+                vocalGainR.gain.value = -1.0 * depth; // Phase Inversion
+
+                // Left -> Splitter(0) -> Merger(0 & 1)
+                // Right -> Splitter(1) -> Inverted -> Merger(0 & 1)
+                splitterNode.connect(vocalGainL, 0);
+                splitterNode.connect(vocalGainR, 1);
+
+                vocalGainL.connect(mergerNode, 0, 0);
+                vocalGainL.connect(mergerNode, 0, 1);
+                vocalGainR.connect(mergerNode, 0, 0);
+                vocalGainR.connect(mergerNode, 0, 1);
+
+                mergerNode.connect(eqLowNode);
+
+            } else if (currentMode === 'vocal-isolate') {
+                // Center Channel Isolation (Extract Vocal)
+                vocalFilterNode.type = 'bandpass';
+                vocalFilterNode.frequency.value = freq;
+                vocalFilterNode.Q.value = 1.2;
+
+                sourceNode.connect(vocalFilterNode);
+
+                vocalFilterNode.connect(splitterNode);
+                // Sum L + R
+                vocalGainL.gain.value = 0.5 * depth;
+                vocalGainR.gain.value = 0.5 * depth;
+
+                splitterNode.connect(vocalGainL, 0);
+                splitterNode.connect(vocalGainR, 1);
+
+                vocalGainL.connect(mergerNode, 0, 0);
+                vocalGainL.connect(mergerNode, 0, 1);
+                vocalGainR.connect(mergerNode, 0, 0);
+                vocalGainR.connect(mergerNode, 0, 1);
+
+                mergerNode.connect(eqLowNode);
+
+            } else if (currentMode === 'bass-boost') {
+                // Vocal Cut + Bass Boost
+                vocalFilterNode.type = 'notch';
+                vocalFilterNode.frequency.value = freq;
+
+                sourceNode.connect(vocalFilterNode);
+                vocalFilterNode.connect(splitterNode);
+
+                vocalGainL.gain.value = 1.0;
+                vocalGainR.gain.value = -0.9;
+
+                splitterNode.connect(vocalGainL, 0);
+                splitterNode.connect(vocalGainR, 1);
+
+                vocalGainL.connect(mergerNode, 0, 0);
+                vocalGainL.connect(mergerNode, 0, 1);
+                vocalGainR.connect(mergerNode, 0, 0);
+                vocalGainR.connect(mergerNode, 0, 1);
+
+                mergerNode.connect(eqLowNode);
+            }
+
+            // Chain: EQ Low -> Mid -> High
+            eqLowNode.connect(eqMidNode);
+            eqMidNode.connect(eqHighNode);
+
+            let lastNode = eqHighNode;
+
+            // Pan
+            if (pannerNode) {
+                lastNode.connect(pannerNode);
+                lastNode = pannerNode;
+            }
+
+            // Delay / Echo Parallel Branch
+            lastNode.connect(masterGainNode);
+            lastNode.connect(delayNode);
+            delayNode.connect(delayGainNode);
+            delayGainNode.connect(masterGainNode);
+
+            // Reverb Parallel Branch
+            lastNode.connect(convolverNode);
+            convolverNode.connect(convolverGainNode);
+            convolverGainNode.connect(masterGainNode);
+
+            // Master Gain -> Analyser -> Output
+            masterGainNode.connect(analyserNode);
+            analyserNode.connect(audioCtx.destination);
+
+            updateFXParams();
+        }
+
+        // Apply slider values to Web Audio Nodes
+        function updateFXParams() {
+            if (!audioCtx) return;
+
+            // EQ
+            eqLowNode.gain.value = parseFloat(eqLow.value);
+            eqMidNode.gain.value = parseFloat(eqMid.value);
+            eqHighNode.gain.value = parseFloat(eqHigh.value);
+
+            // Speed / Pitch
+            if (sourceNode && sourceNode.playbackRate) {
+                sourceNode.playbackRate.value = parseFloat(speedSlider.value);
+            }
+
+            // Master Volume
+            masterGainNode.gain.value = parseFloat(volumeSlider.value) / 100;
+
+            // Pan
+            if (pannerNode) {
+                pannerNode.pan.value = parseFloat(panSlider.value);
+            }
+
+            // Reverb & Echo
+            convolverGainNode.gain.value = (parseFloat(reverbSlider.value) / 100) * 1.5;
+            delayGainNode.gain.value = (parseFloat(echoSlider.value) / 100) * 0.7;
+        }
+
+        // --- Load & Decode Audio File ---
+        function loadAudioFile(file) {
+            showModal("ファイルを読み込み中", "オーディオデータをデコードしています...");
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                initAudioContext();
+                audioCtx.decodeAudioData(e.target.result)
+                    .then(buffer => {
+                        audioBuffer = buffer;
+                        trackTitle.innerText = file.name;
+                        trackMeta.innerText = `Duration: ${formatTime(buffer.duration)} | Channels: ${buffer.numberOfChannels} | Rate: ${(buffer.sampleRate/1000).toFixed(1)} kHz`;
+                        pauseOffset = 0;
+                        stopAudio();
+                        drawWaveform();
+                        statusBadge.innerText = "準備完了";
+                        statusBadge.className = "text-xs font-medium px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20";
+                        hideModal();
+                    })
+                    .catch(err => {
+                        hideModal();
+                        console.error("Audio decoding error:", err);
+                        alert("オーディオファイルのデコードに失敗しました。\n\n※ DRM（著作権保護）が適用されたM4Aファイルや非対応コーデックの場合は読み込めません。標準的なM4A、MP3、WAV、OGGファイルを読み込んでください。");
+                    });
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        // --- Generate Demo Track (Synthesizer Stereo Track) ---
+        function generateDemoTrack() {
+            initAudioContext();
+            showModal("デモ曲を生成中", "ボーカル＋ステレオ伴奏つきのテスト曲を合成しています...");
+
+            setTimeout(() => {
+                const sampleRate = audioCtx.sampleRate;
+                const duration = 16.0; // 16 seconds
+                const numFrames = sampleRate * duration;
+                const buffer = audioCtx.createBuffer(2, numFrames, sampleRate);
+                const left = buffer.getChannelData(0);
+                const right = buffer.getChannelData(1);
+
+                // BPM 120
+                const bpm = 120;
+                const beatSec = 60 / bpm;
+
+                for (let i = 0; i < numFrames; i++) {
+                    const t = i / sampleRate;
+
+                    // 1. Bassline (Left Panned slightly)
+                    const bassNote = [110, 110, 138.59, 146.83][Math.floor(t / (beatSec * 2)) % 4];
+                    const bassVal = Math.sin(2 * Math.PI * bassNote * t) * 0.25 * Math.exp(-3 * ((t % beatSec) / beatSec));
+
+                    // 2. Chords / Synth Arp (Right Panned)
+                    const chordNote = [220, 277.18, 329.63, 440][Math.floor(t * 8) % 4];
+                    const chordVal = (Math.sin(2 * Math.PI * chordNote * t) > 0 ? 0.1 : -0.1) * Math.exp(-4 * ((t % (beatSec / 2)) / (beatSec / 2)));
+
+                    // 3. Drums (Stereo)
+                    let drumL = 0, drumR = 0;
+                    if ((t % beatSec) < 0.1) { // Kick
+                        const kick = Math.sin(2 * Math.PI * 60 * (t % beatSec) * (1 - (t % beatSec) * 5)) * 0.5;
+                        drumL += kick;
+                        drumR += kick;
+                    }
+                    if (((t + beatSec / 2) % beatSec) < 0.08) { // Snare
+                        const snare = (Math.random() * 2 - 1) * 0.2;
+                        drumL += snare * 0.8;
+                        drumR += snare * 1.2;
+                    }
+
+                    // 4. CENTER VOCAL (Purely panned to center: identical L and R)
+                    // Melody: 440Hz ~ 880Hz Vocal Synthesis
+                    const vocalMelody = [440, 554.37, 659.25, 554.37, 659.25, 880, 783.99, 659.25][Math.floor(t / beatSec) % 8];
+                    // Formant-like vocal synthesis (Vibrato)
+                    const vibrato = Math.sin(2 * Math.PI * 5 * t) * 8;
+                    const vocalVal = Math.sin(2 * Math.PI * (vocalMelody + vibrato) * t) * 0.35 * (0.8 + 0.2 * Math.sin(2 * Math.PI * 2 * t));
+
+                    // Mix into Left and Right channels
+                    left[i] = bassVal * 0.8 + chordVal * 0.2 + drumL + vocalVal;
+                    right[i] = bassVal * 0.2 + chordVal * 0.8 + drumR + vocalVal;
+                }
+
+                audioBuffer = buffer;
+                trackTitle.innerText = "Demo - Stereo Vocal & Synth Track.wav";
+                trackMeta.innerText = `Duration: ${formatTime(duration)} | Synth Track (Vocal Panned Center)`;
+                pauseOffset = 0;
+                stopAudio();
+                drawWaveform();
+                statusBadge.innerText = "デモ曲準備完了";
+                statusBadge.className = "text-xs font-medium px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20";
+                hideModal();
+            }, 300);
+        }
+
+        // --- Playback Controls ---
+        function playAudio() {
+            if (!audioBuffer) return;
+            initAudioContext();
+
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+
+            if (isPlaying) {
+                pauseAudio();
+                return;
+            }
+
+            sourceNode = audioCtx.createBufferSource();
+            sourceNode.buffer = audioBuffer;
+            sourceNode.loop = isLooping;
+
+            setupNodeConnections();
+
+            const offset = pauseOffset % audioBuffer.duration;
+            sourceNode.start(0, offset);
+            startTime = audioCtx.currentTime - offset;
+            isPlaying = true;
+
+            playBtn.innerHTML = `<i class="fa-solid fa-pause"></i>`;
+            statusBadge.innerText = "再生中";
+            statusBadge.className = "text-xs font-medium px-2.5 py-1 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20";
+
+            sourceNode.onended = () => {
+                if (isPlaying && !isLooping) {
+                    stopAudio();
+                }
+            };
+
+            requestAnimationFrame(updatePlaybackProgress);
+        }
+
+        function pauseAudio() {
+            if (!isPlaying || !sourceNode) return;
+            sourceNode.stop();
+            pauseOffset = audioCtx.currentTime - startTime;
+            isPlaying = false;
+            playBtn.innerHTML = `<i class="fa-solid fa-play ml-0.5"></i>`;
+            statusBadge.innerText = "一時停止";
+            statusBadge.className = "text-xs font-medium px-2.5 py-1 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20";
+        }
+
+        function stopAudio() {
+            if (sourceNode) {
+                try { sourceNode.stop(); } catch(e) {}
+            }
+            isPlaying = false;
+            pauseOffset = 0;
+            playBtn.innerHTML = `<i class="fa-solid fa-play ml-0.5"></i>`;
+            playhead.style.left = "0%";
+            currentTimeText.innerText = "00:00";
+            if (audioBuffer) {
+                statusBadge.innerText = "停止中";
+                statusBadge.className = "text-xs font-medium px-2.5 py-1 rounded-full bg-slate-800 text-slate-400 border border-slate-700";
+            }
+        }
+
+        function updatePlaybackProgress() {
+            if (!isPlaying || !audioBuffer) return;
+
+            let current = (audioCtx.currentTime - startTime) * parseFloat(speedSlider.value);
+            if (isLooping) {
+                current = current % audioBuffer.duration;
+            }
+
+            if (current >= audioBuffer.duration) {
+                stopAudio();
+                return;
+            }
+
+            currentTimeText.innerText = formatTime(current);
+            totalTimeText.innerText = formatTime(audioBuffer.duration);
+
+            const progressPct = (current / audioBuffer.duration) * 100;
+            playhead.style.left = `${Math.min(100, Math.max(0, progressPct))}%`;
+
+            renderSpectrum();
+            requestAnimationFrame(updatePlaybackProgress);
+        }
+
+        // --- Render Visualizers ---
+        function drawWaveform() {
+            if (!audioBuffer) return;
+            const width = waveCanvas.width = waveCanvas.parentElement.clientWidth;
+            const height = waveCanvas.height = waveCanvas.parentElement.clientHeight;
+
+            waveCtx.clearRect(0, 0, width, height);
+
+            const dataL = audioBuffer.getChannelData(0);
+            const step = Math.ceil(dataL.length / width);
+            const amp = height / 2;
+
+            waveCtx.fillStyle = '#1e293b';
+            waveCtx.fillRect(0, 0, width, height);
+
+            // Draw center baseline
+            waveCtx.strokeStyle = '#334155';
+            waveCtx.beginPath();
+            waveCtx.moveTo(0, amp);
+            waveCtx.lineTo(width, amp);
+            waveCtx.stroke();
+
+            // Waveform Graph
+            waveCtx.fillStyle = '#3b82f6';
+            for (let i = 0; i < width; i++) {
+                let min = 1.0;
+                let max = -1.0;
+                for (let j = 0; j < step; j++) {
+                    const datum = dataL[i * step + j];
+                    if (datum < min) min = datum;
+                    if (datum > max) max = datum;
+                }
+                waveCtx.fillRect(i, (1 + min) * amp, 1, Math.max(1, (max - min) * amp));
+            }
+        }
+
+        function renderSpectrum() {
+            if (!analyserNode || !isPlaying) return;
+
+            const width = specCanvas.width = specCanvas.parentElement.clientWidth;
+            const height = specCanvas.height = specCanvas.parentElement.clientHeight;
+
+            const bufferLength = analyserNode.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+            analyserNode.getByteFrequencyData(dataArray);
+
+            specCtx.clearRect(0, 0, width, height);
+
+            const barWidth = (width / bufferLength) * 2.5;
+            let barWidthPos = 0;
+
+            for (let i = 0; i < bufferLength; i++) {
+                const barHeight = (dataArray[i] / 255) * height;
+
+                // Dynamic Gradient for spectrum
+                const gradient = specCtx.createLinearGradient(0, height, 0, 0);
+                gradient.addColorStop(0, '#3b82f6');
+                gradient.addColorStop(0.5, '#8b5cf6');
+                gradient.addColorStop(1, '#ec4899');
+
+                specCtx.fillStyle = gradient;
+                specCtx.fillRect(barWidthPos, height - barHeight, barWidth - 1, barHeight);
+
+                barWidthPos += barWidth;
+            }
+        }
+
+        // --- Export Edited Audio to WAV ---
+        async function exportAudioWav() {
+            if (!audioBuffer) {
+                alert("エクスポートする音声データがありません。先にファイルを読み込んでください。");
+                return;
+            }
+
+            showModal("WAVファイルをレンダリング中", "現在のエフェクトとボーカル分離処理を適用して音声を生成しています...");
+
+            setTimeout(async () => {
+                try {
+                    // Create Offline Audio Context for Fast Background Rendering
+                    const offlineCtx = new OfflineAudioContext(
+                        audioBuffer.numberOfChannels,
+                        audioBuffer.length,
+                        audioBuffer.sampleRate
+                    );
+
+                    // Offline Source
+                    const offSource = offlineCtx.createBufferSource();
+                    offSource.buffer = audioBuffer;
+
+                    // Re-create node processing graph for offline rendering
+                    const offSplitter = offlineCtx.createChannelSplitter(2);
+                    const offMerger = offlineCtx.createChannelMerger(2);
+
+                    const offVocalFilter = offlineCtx.createBiquadFilter();
+                    const offVocalGainL = offlineCtx.createGain();
+                    const offVocalGainR = offlineCtx.createGain();
+
+                    const offEQLow = offlineCtx.createBiquadFilter();
+                    offEQLow.type = 'lowshelf';
+                    offEQLow.frequency.value = 250;
+                    offEQLow.gain.value = parseFloat(eqLow.value);
+
+                    const offEQMid = offlineCtx.createBiquadFilter();
+                    offEQMid.type = 'peaking';
+                    offEQMid.frequency.value = 1500;
+                    offEQMid.gain.value = parseFloat(eqMid.value);
+
+                    const offEQHigh = offlineCtx.createBiquadFilter();
+                    offEQHigh.type = 'highshelf';
+                    offEQHigh.frequency.value = 4000;
+                    offEQHigh.gain.value = parseFloat(eqHigh.value);
+
+                    const offMasterGain = offlineCtx.createGain();
+                    offMasterGain.gain.value = parseFloat(volumeSlider.value) / 100;
+
+                    const depth = parseFloat(vocalDepthSlider.value) / 100;
+                    const freq = parseFloat(vocalFreqSlider.value);
+
+                    if (currentMode === 'original') {
+                        offSource.connect(offEQLow);
+                    } else if (currentMode === 'vocal-remove' || currentMode === 'bass-boost') {
+                        offVocalFilter.type = 'notch';
+                        offVocalFilter.frequency.value = freq;
+                        offSource.connect(offVocalFilter);
+                        offVocalFilter.connect(offSplitter);
+
+                        offVocalGainL.gain.value = 1.0;
+                        offVocalGainR.gain.value = -1.0 * depth;
+
+                        offSplitter.connect(offVocalGainL, 0);
+                        offSplitter.connect(offVocalGainR, 1);
+
+                        offVocalGainL.connect(offMerger, 0, 0);
+                        offVocalGainL.connect(offMerger, 0, 1);
+                        offVocalGainR.connect(offMerger, 0, 0);
+                        offVocalGainR.connect(offMerger, 0, 1);
+
+                        offMerger.connect(offEQLow);
+                    } else if (currentMode === 'vocal-isolate') {
+                        offVocalFilter.type = 'bandpass';
+                        offVocalFilter.frequency.value = freq;
+                        offSource.connect(offVocalFilter);
+                        offVocalFilter.connect(offSplitter);
+
+                        offVocalGainL.gain.value = 0.5 * depth;
+                        offVocalGainR.gain.value = 0.5 * depth;
+
+                        offSplitter.connect(offVocalGainL, 0);
+                        offSplitter.connect(offVocalGainR, 1);
+
+                        offVocalGainL.connect(offMerger, 0, 0);
+                        offVocalGainL.connect(offMerger, 0, 1);
+                        offVocalGainR.connect(offMerger, 0, 0);
+                        offVocalGainR.connect(offMerger, 0, 1);
+
+                        offMerger.connect(offEQLow);
+                    }
+
+                    offEQLow.connect(offEQMid);
+                    offEQMid.connect(offEQHigh);
+                    offEQHigh.connect(offMasterGain);
+                    offMasterGain.connect(offlineCtx.destination);
+
+                    offSource.playbackRate.value = parseFloat(speedSlider.value);
+                    offSource.start(0);
+
+                    // Render
+                    const renderedBuffer = await offlineCtx.startRendering();
+
+                    // Convert AudioBuffer to WAV Blob
+                    const wavBlob = audioBufferToWavBlob(renderedBuffer);
+
+                    // Trigger Download
+                    const url = URL.createObjectURL(wavBlob);
+                    const a = document.createElement('a');
+                    a.style.display = 'none';
+                    a.href = url;
+                    a.download = `VocalRemover_Processed_${Date.now()}.wav`;
+                    document.body.appendChild(a);
+                    a.click();
+                    setTimeout(() => {
+                        document.body.removeChild(a);
+                        URL.revokeObjectURL(url);
+                    }, 1000);
+
+                    hideModal();
+                } catch (err) {
+                    console.error(err);
+                    hideModal();
+                    alert("WAVの書き出し処理中にエラーが発生しました。");
+                }
+            }, 300);
+        }
+
+        // Convert AudioBuffer -> WAV Format Blob Helper
+        function audioBufferToWavBlob(buffer) {
+            const numOfChan = buffer.numberOfChannels;
+            const length = buffer.length * numOfChan * 2 + 44;
+            const out = new DataView(new ArrayBuffer(length));
+            let channels = [], sampleRate = buffer.sampleRate, offset = 0, pos = 0;
+
+            function setUint16(data) { out.setUint16(pos, data, true); pos += 2; }
+            function setUint32(data) { out.setUint32(pos, data, true); pos += 4; }
+
+            // RIFF header
+            setUint32(0x46464952); // "RIFF"
+            setUint32(length - 8); // file length - 8
+            setUint32(0x45564157); // "WAVE"
+            setUint32(0x20746d66); // "fmt " chunk
+            setUint32(16);         // length = 16
+            setUint16(1);          // PCM
+            setUint16(numOfChan);
+            setUint32(sampleRate);
+            setUint32(sampleRate * 2 * numOfChan);
+            setUint16(numOfChan * 2);
+            setUint16(16);         // 16-bit
+            setUint32(0x61746164); // "data" chunk
+            setUint32(length - pos - 4);
+
+            for (let i = 0; i < buffer.numberOfChannels; i++) {
+                channels.push(buffer.getChannelData(i));
+            }
+
+            while (offset < buffer.length) {
+                for (let i = 0; i < numOfChan; i++) {
+                    let sample = Math.max(-1, Math.min(1, channels[i][offset]));
+                    sample = (0.5 + sample < 0 ? sample * 32768 : sample * 32767) | 0;
+                    out.setInt16(pos, sample, true);
+                    pos += 2;
+                }
+                offset++;
+            }
+            return new Blob([out.buffer], { type: "audio/wav" });
+        }
+
+        // --- Utility Helper Functions ---
+        function formatTime(seconds) {
+            const m = Math.floor(seconds / 60);
+            const s = Math.floor(seconds % 60);
+            return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+        }
+
+        function showModal(title, msg) {
+            modalTitle.innerText = title;
+            modalMsg.innerText = msg;
+            modalOverlay.classList.remove('hidden');
+        }
+
+        function hideModal() {
+            modalOverlay.classList.add('hidden');
+        }
+
+        // --- Event Listeners ---
+        audioFileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                loadAudioFile(e.target.files[0]);
+            }
+        });
+
+        // Drag & Drop Support for M4A and Audio Files
+        window.addEventListener('dragover', (e) => e.preventDefault());
+        window.addEventListener('drop', (e) => {
+            e.preventDefault();
+            if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                loadAudioFile(e.dataTransfer.files[0]);
+            }
+        });
+
+        demoBtn.addEventListener('click', generateDemoTrack);
+        playBtn.addEventListener('click', playAudio);
+        stopBtn.addEventListener('click', stopAudio);
+
+        loopBtn.addEventListener('click', () => {
+            isLooping = !isLooping;
+            loopBtn.classList.toggle('text-blue-400', isLooping);
+            loopBtn.classList.toggle('text-slate-400', !isLooping);
+            if (sourceNode) sourceNode.loop = isLooping;
+        });
+
+        // Seek Audio via Waveform Click
+        waveCanvas.addEventListener('click', (e) => {
+            if (!audioBuffer) return;
+            const rect = waveCanvas.getBoundingClientRect();
+            const clickX = e.clientX - rect.left;
+            const pct = clickX / rect.width;
+            pauseOffset = pct * audioBuffer.duration;
+
+            if (isPlaying) {
+                stopAudio();
+                playAudio();
+            } else {
+                currentTimeText.innerText = formatTime(pauseOffset);
+                playhead.style.left = `${pct * 100}%`;
+            }
+        });
+
+        // Mode Switching
+        document.querySelectorAll('.mode-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.mode-btn').forEach(b => {
+                    b.classList.remove('active', 'border-blue-500/50', 'bg-blue-500/10', 'text-blue-400');
+                    b.classList.add('border-slate-800', 'bg-slate-800/50', 'text-slate-400');
+                });
+                btn.classList.add('active', 'border-blue-500/50', 'bg-blue-500/10', 'text-blue-400');
+                btn.classList.remove('border-slate-800', 'bg-slate-800/50', 'text-slate-400');
+
+                currentMode = btn.getAttribute('data-mode');
+
+                // Adjust default sliders based on mode
+                if (currentMode === 'bass-boost') {
+                    eqLow.value = 12;
+                    eqLowVal.innerText = "+12 dB";
+                }
+
+                if (isPlaying) {
+                    setupNodeConnections();
+                }
+            });
+        });
+
+        // Dynamic Slider Value Updates & Controls
+        vocalFreqSlider.addEventListener('input', (e) => {
+            vocalFreqVal.innerText = `${(e.target.value / 1000).toFixed(1)} kHz`;
+            if (vocalFilterNode) vocalFilterNode.frequency.value = parseFloat(e.target.value);
+        });
+
+        vocalDepthSlider.addEventListener('input', (e) => {
+            vocalDepthVal.innerText = `${e.target.value}%`;
+            if (isPlaying) setupNodeConnections();
+        });
+
+        eqLow.addEventListener('input', (e) => {
+            eqLowVal.innerText = `${e.target.value > 0 ? '+' : ''}${e.target.value} dB`;
+            updateFXParams();
+        });
+        eqMid.addEventListener('input', (e) => {
+            eqMidVal.innerText = `${e.target.value > 0 ? '+' : ''}${e.target.value} dB`;
+            updateFXParams();
+        });
+        eqHigh.addEventListener('input', (e) => {
+            eqHighVal.innerText = `${e.target.value > 0 ? '+' : ''}${e.target.value} dB`;
+            updateFXParams();
+        });
+
+        speedSlider.addEventListener('input', (e) => {
+            speedVal.innerText = `${parseFloat(e.target.value).toFixed(2)}x`;
+            updateFXParams();
+        });
+
+        volumeSlider.addEventListener('input', (e) => {
+            volumeVal.innerText = `${e.target.value}%`;
+            updateFXParams();
+        });
+
+        panSlider.addEventListener('input', (e) => {
+            const val = parseFloat(e.target.value);
+            panVal.innerText = val === 0 ? 'C' : val < 0 ? `L ${Math.abs(Math.round(val * 100))}` : `R ${Math.round(val * 100)}`;
+            updateFXParams();
+        });
+
+        reverbSlider.addEventListener('input', (e) => {
+            reverbVal.innerText = `${e.target.value}%`;
+            updateFXParams();
+        });
+
+        echoSlider.addEventListener('input', (e) => {
+            echoVal.innerText = `${e.target.value}%`;
+            updateFXParams();
+        });
+
+        exportBtn.addEventListener('click', exportAudioWav);
+
+        // Resize Canvas Handler
+        window.addEventListener('resize', () => {
+            if (audioBuffer) drawWaveform();
+        });
+    </script>
+</body>
+</html>
